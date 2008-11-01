@@ -1,0 +1,22 @@
+---
+name: POE-Component-IRC-Plugin-WWW-HTMLTagAttributeCounter
+version: 0.0101
+author:
+  - "Zoffix <'zoffix@cpan.org'>"
+abstract: html tag and attribute counter for IRC
+license: perl
+resources:
+  license: http://dev.perl.org/licenses/
+requires:
+  POE::Component::IRC::Plugin::BasePoCoWrap: 0.005
+  POE::Component::WWW::HTMLTagAttributeCounter: 0.0101
+build_requires:
+  Test::More: 0
+provides:
+  POE::Component::IRC::Plugin::WWW::HTMLTagAttributeCounter:
+    file: lib/POE/Component/IRC/Plugin/WWW/HTMLTagAttributeCounter.pm
+    version: 0.0101
+generated_by: Module::Build version 0.2808
+meta-spec:
+  url: http://module-build.sourceforge.net/META-spec-v1.2.html
+  version: 1.2
