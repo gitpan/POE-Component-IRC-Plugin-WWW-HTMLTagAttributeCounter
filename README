@@ -1,46 +1,375 @@
-POE-Component-IRC-Plugin-WWW-HTMLTagAttributeCounter
+NAME
+    POE::Component::IRC::Plugin::WWW::HTMLTagAttributeCounter - html tag and
+    attribute counter for IRC
 
-This module is a L<POE::Component::IRC> plugin which uses
-L<POE::Component::IRC::Plugin> for its base. It provides interface to
-count HTML tags and attributes in the web page given. The plugin is non-blocking and
-it accepts input from public channel events, C</notice> messages as well
-as C</msg> (private messages); although that can be configured at will.
+SYNOPSIS
+        use strict;
+        use warnings;
 
-INSTALLATION
+        use POE qw(Component::IRC Component::IRC::Plugin::WWW::HTMLTagAttributeCounter);
 
-To install this module, run the following commands:
+        my $irc = POE::Component::IRC->spawn(
+            nick        => 'CounterBot',
+            server      => 'irc.freenode.net',
+            port        => 6667,
+            ircname     => 'CounterBot',
+        );
 
-	perl Build.PL
-	./Build
-	./Build test
-	./Build install
+        POE::Session->create(
+            package_states => [
+                main => [ qw(_start irc_001) ],
+            ],
+        );
 
-SUPPORT AND DOCUMENTATION
+        $poe_kernel->run;
 
-After installing, you can find documentation for this module with the
-perldoc command.
+        sub _start {
+            $irc->yield( register => 'all' );
 
-    perldoc POE::Component::IRC::Plugin::WWW::HTMLTagAttributeCounter
+            $irc->plugin_add(
+                'HTMLCounter' =>
+                    POE::Component::IRC::Plugin::WWW::HTMLTagAttributeCounter->new
+            );
 
-You can also look for information at:
+            $irc->yield( connect => {} );
+        }
 
-    RT, CPAN's request tracker
-        http://rt.cpan.org/NoAuth/Bugs.html?Dist=POE-Component-IRC-Plugin-WWW-HTMLTagAttributeCounter
+        sub irc_001 {
+            $_[KERNEL]->post( $_[SENDER] => join => '#zofbot' );
+        }
 
-    AnnoCPAN, Annotated CPAN documentation
-        http://annocpan.org/dist/POE-Component-IRC-Plugin-WWW-HTMLTagAttributeCounter
+        <Zoffix> CounterBot, count tag http://zoffix.com/ div a span
+        <CounterBot> Zoffix, I counted 15 a, 6 div and 8 span tags
 
-    CPAN Ratings
-        http://cpanratings.perl.org/d/POE-Component-IRC-Plugin-WWW-HTMLTagAttributeCounter
+        <Zoffix> CounterBot, count attr http://zoffix.com/ href class id
+        <CounterBot> Zoffix, I counted 9 class, 17 href and 15 id attributes
 
-    Search CPAN
-        http://search.cpan.org/dist/POE-Component-IRC-Plugin-WWW-HTMLTagAttributeCounter
+DESCRIPTION
+    This module is a POE::Component::IRC plugin which uses
+    POE::Component::IRC::Plugin for its base. It provides interface to count
+    HTML tags and attributes in the web page given. The plugin is
+    non-blocking and it accepts input from public channel events, "/notice"
+    messages as well as "/msg" (private messages); although that can be
+    configured at will.
 
+IRC USAGE
+    With all the default arguments you'd trigger the plugin with the
+    following request:
 
-COPYRIGHT AND LICENCE
+        <Zoffix> CounterBot, count tag http://zoffix.com/ div a span
 
-Copyright (C) 2008 'Zoffix
+    Where "count" is the trigger, "tag" is the type of count that can be
+    either "tag" or "attr", following that is the URI on which to perform
+    the count and after the URI is a whitespace separated list of tags to
+    count.
 
-This program is free software; you can redistribute it and/or modify it
-under the same terms as Perl itself.
+    Note that "tag http://zoffix.com/ div a span" line is all whitespace
+    separated, you cannot change that, really.
+
+CONSTRUCTOR
+  "new"
+        # plain and simple
+        $irc->plugin_add(
+            'HTMLCounter' => POE::Component::IRC::Plugin::WWW::HTMLTagAttributeCounter->new
+        );
+
+        # juicy flavor
+        $irc->plugin_add(
+            'HTMLCounter' =>
+                POE::Component::IRC::Plugin::WWW::HTMLTagAttributeCounter->new(
+                    auto             => 1,
+                    ua               => LWP::UserAgent->new( timeout => 10 ),
+                    response_event   => 'irc_html_counter',
+                    banned           => [ qr/aol\.com$/i ],
+                    addressed        => 1,
+                    root             => [ qr/mah.net$/i ],
+                    trigger          => qr/^count\s+(?=\S+\s+\S+\s+\S+)/i,
+                    triggers         => {
+                        public  => qr/^count\s+(?=\S+\s+\S+\s+\S+)/i,
+                        notice  => qr/^count\s+(?=\S+\s+\S+\s+\S+)/i,
+                        privmsg => qr/^count\s+(?=\S+\s+\S+\s+\S+)/i,
+                    },
+                    listen_for_input => [ qw(public notice privmsg) ],
+                    eat              => 1,
+                    debug            => 0,
+                )
+        );
+
+    The "new()" method constructs and returns a new
+    "POE::Component::IRC::Plugin::WWW::HTMLTagAttributeCounter" object
+    suitable to be fed to POE::Component::IRC's "plugin_add" method. The
+    constructor takes a few arguments, but *all of them are optional*. The
+    possible arguments/values are as follows:
+
+   "auto"
+        ->new( auto => 0 );
+
+    Optional. Takes either true or false values, specifies whether or not
+    the plugin should auto respond to requests. When the "auto" argument is
+    set to a true value plugin will respond to the requesting person with
+    the results automatically. When the "auto" argument is set to a false
+    value plugin will not respond and you will have to listen to the events
+    emited by the plugin to retrieve the results (see EMITED EVENTS section
+    and "response_event" argument for details). Defaults to: 1.
+
+   "response_event"
+        ->new( response_event => 'event_name_to_recieve_results' );
+
+    Optional. Takes a scalar string specifying the name of the event to emit
+    when the results of the request are ready. See EMITED EVENTS section for
+    more information. Defaults to: "irc_html_counter"
+
+   "banned"
+        ->new( banned => [ qr/aol\.com$/i ] );
+
+    Optional. Takes an arrayref of regexes as a value. If the usermask of
+    the person (or thing) making the request matches any of the regexes
+    listed in the "banned" arrayref, plugin will ignore the request.
+    Defaults to: "[]" (no bans are set).
+
+   "root"
+        ->new( root => [ qr/\Qjust.me.and.my.friend.net\E$/i ] );
+
+    Optional. As opposed to "banned" argument, the "root" argument allows
+    access only to people whose usermasks match any of the regexen you
+    specify in the arrayref the argument takes as a value. By default: it is
+    not specified. Note: as opposed to "banned" specifying an empty arrayref
+    to "root" argument will restrict access to everyone.
+
+   "trigger"
+        ->new( trigger => qr/^count\s+(?=\S+\s+\S+\s+\S+)/i );
+
+    Optional. Takes a regex as an argument. Messages matching this regex,
+    irrelevant of the type of the message, will be considered as requests.
+    See also addressed option below which is enabled by default as well as
+    trigggers option which is more specific. Note: the trigger will be
+    removed from the message, therefore make sure your trigger doesn't match
+    the actual data that needs to be processed. See "IRC USAGE" section
+    below to understand how you need to format your trigger. Defaults to:
+    "qr/^count\s+(?=\S+\s+\S+\s+\S+)/i"
+
+   "triggers"
+        ->new( triggers => {
+                public  => qr/^count\s+(?=\S+\s+\S+\s+\S+)/i,
+                notice  => qr/^count\s+(?=\S+\s+\S+\s+\S+)/i,
+                privmsg => qr/^count\s+(?=\S+\s+\S+\s+\S+)/i,
+            }
+        );
+
+    Optional. Takes a hashref as an argument which may contain either one or
+    all of keys public, notice and privmsg which indicates the type of
+    messages: channel messages, notices and private messages respectively.
+    The values of those keys are regexes of the same format and meaning as
+    for the "trigger" argument (see above). Messages matching this regex
+    will be considered as requests. The difference is that only messages of
+    type corresponding to the key of "triggers" hashref are checked for the
+    trigger. Note: the "trigger" will be matched irrelevant of the setting
+    in "triggers", thus you can have one global and specific "local"
+    triggers. See also addressed option below which is enabled by default as
+    well as trigggers option which is more specific. Note: the trigger will
+    be removed from the message, therefore make sure your trigger doesn't
+    match the actual data that needs to be processed. Defaults to:
+    "qr/^count\s+(?=\S+\s+\S+\s+\S+)/i"
+
+   "addressed"
+        ->new( addressed => 1 );
+
+    Optional. Takes either true or false values. When set to a true value
+    all the public messages must be *addressed to the bot*. In other words,
+    if your bot's nickname is "Nick" and your trigger is "qr/^trig\s+/" you
+    would make the request by saying "Nick, trig EXAMPLE". When addressed
+    mode is turned on, the bot's nickname, including any whitespace and
+    common punctuation character will be removed before matching the
+    "trigger" (see above). When "addressed" argument it set to a false
+    value, public messages will only have to match "trigger" regex in order
+    to make a request. Note: this argument has no effect on "/notice" and
+    "/msg" requests. Defaults to: 1
+
+   "listen_for_input"
+        ->new( listen_for_input => [ qw(public  notice  privmsg) ] );
+
+    Optional. Takes an arrayref as a value which can contain any of the
+    three elements, namely "public", "notice" and "privmsg" which indicate
+    which kind of input plugin should respond to. When the arrayref contains
+    "public" element, plugin will respond to requests sent from messages in
+    public channels (see "addressed" argument above for specifics). When the
+    arrayref contains "notice" element plugin will respond to requests sent
+    to it via "/notice" messages. When the arrayref contains "privmsg"
+    element, the plugin will respond to requests sent to it via "/msg"
+    (private messages). You can specify any of these. In other words,
+    setting "( listen_for_input =" [ qr(notice privmsg) ] )> will enable
+    functionality only via "/notice" and "/msg" messages. Defaults to: "[
+    qw(public notice privmsg) ]"
+
+   "eat"
+        ->new( eat => 0 );
+
+    Optional. If set to a false value plugin will return a "PCI_EAT_NONE"
+    after responding. If eat is set to a true value, plugin will return a
+    "PCI_EAT_ALL" after responding. See POE::Component::IRC::Plugin
+    documentation for more information if you are interested. Defaults to: 1
+
+   "debug"
+        ->new( debug => 1 );
+
+    Optional. Takes either a true or false value. When "debug" argument is
+    set to a true value some debugging information will be printed out. When
+    "debug" argument is set to a false value no debug info will be printed.
+    Defaults to: 0.
+
+EMITED EVENTS
+  "response_event"
+        $VAR1 = {
+            'result_readable' => '9 class, 17 href and 15 id',
+            'where' => 'http://zoffix.com/',
+            'type' => 'attr',
+            'result' => {
+                'href' => '17',
+                'id' => '15',
+                'class' => '9'
+            },
+            'what' => [
+                'href',
+                'class',
+                'id'
+            ],
+            'out' => 'Zoffix, I counted 9 class, 17 href and 15 id attributes',
+            '_what' => 'attr http://zoffix.com/ href class id',
+            '_channel' => '#zofbot',
+            '_type' => 'public',
+            '_who' => 'Zoffix!n=Zoffix@unaffiliated/zoffix',
+            '_message' => 'CounterBot, count attr http://zoffix.com/ href class id',
+        };
+
+    The event handler set up to handle the event, name of which you've
+    specified in the "response_event" argument to the constructor (it
+    defaults to "irc_html_counter") will recieve input every time request is
+    completed. The input will come in $_[ARG0] on a form of a hashref. The
+    possible keys/values of that hashrefs are as follows:
+
+   "result_readable"
+        { 'result_readable' => '15 a, 6 div and 8 span', }
+
+    The "result_readable" key will contain the return value of
+    "result_readable" method of WWW::HTMLTagAttributeCounter.
+
+   "result"
+        {
+            'result' => {
+                'href' => '17',
+                'id' => '15',
+                'class' => '9'
+            },
+        }
+
+    The "result" key will contain the same hashref as
+    WWW::HTMLTagAttributeCounter's "count()" method would return. See
+    WWW::HTMLTagAttributeCounter for details.
+
+   "where"
+        'where' => 'http://zoffix.com/',
+
+    The "where" key will contain the URI of the page on which the count is
+    performed.
+
+   "type"
+        'type' => 'tag',
+
+    The "type" key will contain the type of the count, this will be either
+    "attr" or "tag".
+
+   "result"
+        'result' => 'Zoffix, I counted 15 a, 6 div and 8 span tags',
+
+    The "result" key will contain the message that would be spoken on IRC
+    when constructor's "auto" argument is set to a true value.
+
+   "what"
+        'what' => [
+            'div',
+            'a',
+            'span'
+        ],
+
+    The "what" key will contain an arrayref of tags or attributes that were
+    counted.
+
+   "_who"
+        { '_who' => 'Zoffix!Zoffix@i.love.debian.org', }
+
+    The "_who" key will contain the user mask of the user who sent the
+    request.
+
+   "_what"
+        { '_what' => 'EXAMPLE', }
+
+    The "_what" key will contain user's message after stripping the
+    "trigger" (see CONSTRUCTOR).
+
+   "_message"
+        { '_message' => 'CounterBot, count attr http://zoffix.com/ href class id', }
+
+    The "_message" key will contain the actual message which the user sent;
+    that is before the trigger is stripped.
+
+   "_type"
+        { '_type' => 'public', }
+
+    The "_type" key will contain the "type" of the message the user have
+    sent. This will be either "public", "privmsg" or "notice".
+
+   "_channel"
+        { '_channel' => '#zofbot', }
+
+    The "_channel" key will contain the name of the channel where the
+    message originated. This will only make sense if "_type" key contains
+    "public".
+
+SEE ALSO
+    POE, WWW::HTMLTagAttributeCounter
+
+AUTHOR
+    'Zoffix, "<'zoffix at cpan.org'>" (<http://zoffix.com/>,
+    <http://haslayout.net/>, <http://zofdesign.com/>)
+
+BUGS
+    Please report any bugs or feature requests to
+    "bug-poe-component-irc-plugin-www-htmltagattributecounter at
+    rt.cpan.org", or through the web interface at
+    <http://rt.cpan.org/NoAuth/ReportBug.html?Queue=POE-Component-IRC-Plugin
+    -WWW-HTMLTagAttributeCounter>. I will be notified, and then you'll
+    automatically be notified of progress on your bug as I make changes.
+
+SUPPORT
+    You can find documentation for this module with the perldoc command.
+
+        perldoc POE::Component::IRC::Plugin::WWW::HTMLTagAttributeCounter
+
+    You can also look for information at:
+
+    *   RT: CPAN's request tracker
+
+        <http://rt.cpan.org/NoAuth/Bugs.html?Dist=POE-Component-IRC-Plugin-W
+        WW-HTMLTagAttributeCounter>
+
+    *   AnnoCPAN: Annotated CPAN documentation
+
+        <http://annocpan.org/dist/POE-Component-IRC-Plugin-WWW-HTMLTagAttrib
+        uteCounter>
+
+    *   CPAN Ratings
+
+        <http://cpanratings.perl.org/d/POE-Component-IRC-Plugin-WWW-HTMLTagA
+        ttributeCounter>
+
+    *   Search CPAN
+
+        <http://search.cpan.org/dist/POE-Component-IRC-Plugin-WWW-HTMLTagAtt
+        ributeCounter>
+
+COPYRIGHT & LICENSE
+    Copyright 2008 'Zoffix, all rights reserved.
+
+    This program is free software; you can redistribute it and/or modify it
+    under the same terms as Perl itself.
 

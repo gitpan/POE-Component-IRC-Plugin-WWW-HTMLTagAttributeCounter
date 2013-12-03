@@ -11,6 +11,7 @@ my $irc = POE::Component::IRC->spawn(
     server      => 'irc.freenode.net',
     port        => 6667,
     ircname     => 'CounterBot',
+    debug       => 1,
 );
 
 POE::Session->create(
